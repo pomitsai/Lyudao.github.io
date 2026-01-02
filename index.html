@@ -1,0 +1,639 @@
+<!-- Chosen Palette: Summer Breeze (Teal-500 #14b8a6, Sky-100 #e0f2fe, Sand/Amber-100 #fef3c7, Slate-800 #1e293b) -->
+
+<!-- Application Structure Plan: 
+    1. Navigation: Sticky top bar for quick access to distinct modules.
+    2. Hero Section: Sets the mood and displays the trip summary.
+    3. Smart Logistics (Analysis): Uses charts to justify the transport recommendation (Taichung -> Green Island) and suggests accommodation areas based on the "Quiet + Sea View" preference.
+    4. Interactive Timeline (Core Feature): A day-by-day switcher. Instead of a long scroll, users toggle Day 1-4 to see a focused timeline. This reduces cognitive load.
+    5. Gastronomy Guide: A filterable grid (Seafood, Snacks, Desserts) to help the user decide "what to eat now".
+    6. Preparation Hub: An interactive checklist to ensure nothing is forgotten.
+    Rationale: This structure separates "Planning logic" (Transport/Cost) from "Execution" (Itinerary/Food), making the app useful both before and during the trip.
+-->
+
+<!-- Visualization & Content Choices:
+    1. Transport Comparison (Chart.js Bar): Goal: Inform/Compare. Visualizes why the HSR+Train combo is better than driving (Time vs. Fatigue).
+    2. Budget Estimation (Chart.js Doughnut): Goal: Inform. Shows estimated cost distribution to highlight CP value.
+    3. Itinerary Timeline (HTML/CSS): Goal: Change/Guide. Vertical timeline with Unicode icons. No SVGs. clear time slots and map links.
+    4. Food Filters (JS/HTML): Goal: Organize. Categorizes restaurants so the user isn't overwhelmed.
+    5. Interactive Checklist (JS/HTML): Goal: Inform/Interact. Simple click-to-strike interaction.
+    All visualizations use Chart.js Canvas or styled HTML elements. NO SVG/Mermaid.
+-->
+
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>綠島親子漫遊 • 2026 夏日四日行</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f0f9ff; /* Sky-50 */
+            color: #334155; /* Slate-700 */
+        }
+        
+        /* Custom Scrollbar for a polished feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #14b8a6; /* Teal-500 */
+            border-radius: 4px;
+        }
+
+        /* Chart Container Styling - Mandatory Requirements */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px; /* Constrain width */
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* Base height */
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        /* Timeline Connector Line */
+        .timeline-line {
+            position: absolute;
+            left: 1.25rem; /* 20px */
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #cbd5e1; /* Slate-300 */
+            z-index: 0;
+        }
+
+        .active-tab {
+            background-color: #14b8a6;
+            color: white;
+            border-color: #14b8a6;
+        }
+        .inactive-tab {
+            background-color: white;
+            color: #64748b;
+            border-color: #cbd5e1;
+        }
+        .inactive-tab:hover {
+            background-color: #f1f5f9;
+        }
+
+        .checklist-item.checked span {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-teal-200">
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-100">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🏝️</span>
+                    <span class="font-bold text-xl text-teal-600 tracking-wide">綠島旅記</span>
+                </div>
+                <div class="hidden md:flex space-x-8">
+                    <a href="#dashboard" class="text-slate-600 hover:text-teal-600 font-medium transition">總覽與預算</a>
+                    <a href="#logistics" class="text-slate-600 hover:text-teal-600 font-medium transition">交通與住宿</a>
+                    <a href="#itinerary" class="text-slate-600 hover:text-teal-600 font-medium transition">每日行程</a>
+                    <a href="#gastronomy" class="text-slate-600 hover:text-teal-600 font-medium transition">美食地圖</a>
+                    <a href="#prep" class="text-slate-600 hover:text-teal-600 font-medium transition">行前準備</a>
+                </div>
+                <!-- Mobile Menu Button (Functional but simplified visual) -->
+                <button id="mobile-menu-btn" class="md:hidden text-slate-600 focus:outline-none">
+                    ☰
+                </button>
+            </div>
+            <!-- Mobile Menu Dropdown -->
+            <div id="mobile-menu" class="hidden md:hidden pb-4 bg-white border-t">
+                <a href="#dashboard" class="block py-2 px-4 text-sm text-slate-600 hover:bg-teal-50">總覽與預算</a>
+                <a href="#logistics" class="block py-2 px-4 text-sm text-slate-600 hover:bg-teal-50">交通與住宿</a>
+                <a href="#itinerary" class="block py-2 px-4 text-sm text-slate-600 hover:bg-teal-50">每日行程</a>
+                <a href="#gastronomy" class="block py-2 px-4 text-sm text-slate-600 hover:bg-teal-50">美食地圖</a>
+                <a href="#prep" class="block py-2 px-4 text-sm text-slate-600 hover:bg-teal-50">行前準備</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="bg-gradient-to-r from-teal-500 to-cyan-400 text-white py-12 md:py-20">
+        <div class="max-w-6xl mx-auto px-4 text-center">
+            <h1 class="text-3xl md:text-5xl font-bold mb-4 drop-shadow-sm">綠島四天三夜 • 親子慢活之旅</h1>
+            <p class="text-lg md:text-xl text-teal-50 mb-2">從台中出發，擁抱太平洋的湛藍</p>
+            <div class="inline-flex items-center bg-white/20 backdrop-blur rounded-full px-6 py-2 text-sm mt-4 border border-white/30">
+                <span>📅 2026/8/16 - 8/19 (週日-週三)</span>
+                <span class="mx-3">|</span>
+                <span>👨‍👩‍👧‍👦 親子休閒風</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Wrapper -->
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
+
+        <!-- Section 1: Dashboard (Overview & Budget) -->
+        <section id="dashboard" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 border-l-4 border-teal-500 pl-3">旅程總覽與預算分析</h2>
+                <p class="mt-2 text-slate-600 leading-relaxed">
+                    本區塊提供此次旅行的宏觀數據分析。根據您「CP值高」且「親子同行」的需求，我們預估了各項支出的比例。綠島的消費主要集中在交通與體驗活動，我們建議在餐飲上選擇在地小吃以平衡預算。
+                </p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                <!-- Trip Stats -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl mb-2">🌡️</div>
+                        <div class="text-sm text-slate-500">預計氣溫</div>
+                        <div class="font-bold text-lg">29°C - 33°C</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl mb-2">🚢</div>
+                        <div class="text-sm text-slate-500">主要交通</div>
+                        <div class="font-bold text-lg">高鐵 + 船運</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl mb-2">🛵</div>
+                        <div class="text-sm text-slate-500">島上移動</div>
+                        <div class="font-bold text-lg">租賃機車</div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 text-center">
+                        <div class="text-3xl mb-2">💰</div>
+                        <div class="text-sm text-slate-500">預估預算/人</div>
+                        <div class="font-bold text-lg">NT$ 12,000</div>
+                    </div>
+                </div>
+
+                <!-- Budget Chart -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col items-center">
+                    <h3 class="text-lg font-semibold text-slate-700 mb-4">預算分配建議</h3>
+                    <div class="chart-container">
+                        <canvas id="budgetChart"></canvas>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-2 text-center">*此為預估值，不含個人購物</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Logistics (Transport & Stay) -->
+        <section id="logistics" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 border-l-4 border-teal-500 pl-3">交通方案與住宿推薦</h2>
+                <p class="mt-2 text-slate-600 leading-relaxed">
+                    針對「台中出發」與「有小孩同行」的情況，我們分析了兩種主要交通方式。為了避免長途駕駛疲勞及小孩暈車，**強烈建議選擇方案 A（大眾運輸複合方案）**。住宿方面，避開喧囂的南寮，選擇柴口或公館區域，能享受更寧靜的海洋假期。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Transport Analysis -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-lg font-bold text-teal-700 mb-4">🚅 交通方案比較 (台中出發)</h3>
+                    
+                    <div class="space-y-4 mb-6">
+                        <div class="p-4 bg-teal-50 rounded-lg border border-teal-100">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-teal-800">✅ 方案 A (推薦)：高鐵轉火車</span>
+                                <span class="text-xs bg-teal-200 text-teal-800 px-2 py-1 rounded">舒適度高</span>
+                            </div>
+                            <ul class="text-sm text-slate-700 space-y-1 list-disc list-inside">
+                                <li><strong>路徑：</strong>台中高鐵 ➔ 左營高鐵 ➔ 台鐵新左營(自強號) ➔ 台東火車站 ➔ 計程車/公車 ➔ 富岡漁港</li>
+                                <li><strong>優點：</strong>時間最穩定，小孩有活動空間，司機不疲勞。</li>
+                                <li><strong>總時長：</strong>約 4.5 - 5 小時 (不含候車)。</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-lg border border-slate-100 opacity-80">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-slate-700">方案 B：自行開車</span>
+                                <span class="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded">機動性高</span>
+                            </div>
+                            <ul class="text-sm text-slate-700 space-y-1 list-disc list-inside">
+                                <li><strong>路徑：</strong>台中 ➔ 國道3號 ➔ 南迴公路 ➔ 台東富岡漁港。</li>
+                                <li><strong>缺點：</strong>單程駕駛約 6-7 小時，南迴山路易暈車，需負擔停車費。</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Transport Chart -->
+                    <div class="chart-container h-48 sm:h-56">
+                        <canvas id="transportChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Accommodation Recommendation -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+                    <h3 class="text-lg font-bold text-teal-700 mb-4">🏨 住宿推薦：柴口/公館區</h3>
+                    <div class="flex-grow">
+                        <div class="mb-4">
+                            <span class="text-sm font-semibold text-slate-500 uppercase tracking-wider">選址策略</span>
+                            <p class="text-slate-700 mt-1">
+                                建議選擇 **柴口 (Chaikou)** 或 **公館 (Gongguan)** 區域。
+                                <br>相比南寮大街(鬧區)，這裡更安靜，且更靠近適合親子浮潛的安全水域。符合您「安靜、海景」的需求。
+                            </p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="border rounded-lg p-3 hover:shadow-md transition cursor-pointer" onclick="window.open('https://www.google.com/maps/search/綠島+好望角無敵海景民宿', '_blank')">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-bold text-slate-800">推薦 1：好望角無敵海景民宿</h4>
+                                    <span class="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">海景</span>
+                                </div>
+                                <p class="text-sm text-slate-600 mt-1">位於公館，地勢較高，擁有絕佳海景視野，環境非常清幽。</p>
+                            </div>
+                            
+                            <div class="border rounded-lg p-3 hover:shadow-md transition cursor-pointer" onclick="window.open('https://www.google.com/maps/search/綠島+綠堤濱海旅店', '_blank')">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-bold text-slate-800">推薦 2：綠堤濱海旅店</h4>
+                                    <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">便利</span>
+                                </div>
+                                <p class="text-sm text-slate-600 mt-1">位於南寮邊緣，兼具逛街便利與海景，CP值不錯的選擇。</p>
+                            </div>
+
+                            <div class="border rounded-lg p-3 hover:shadow-md transition cursor-pointer" onclick="window.open('https://www.google.com/maps/search/綠島+柴口岸', '_blank')">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-bold text-slate-800">推薦 3：柴口岸 (Chaikou An)</h4>
+                                    <span class="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded">親子</span>
+                                </div>
+                                <p class="text-sm text-slate-600 mt-1">現代風格民宿，就在柴口浮潛區對面，玩水後回房間非常方便。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-slate-100 text-center">
+                        <a href="https://www.google.com/maps/search/綠島民宿" target="_blank" class="text-teal-600 font-medium hover:underline text-sm">
+                            在 Google Maps 上查看更多民宿 ↗
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Interactive Itinerary -->
+        <section id="itinerary" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 border-l-4 border-teal-500 pl-3">每日行程規劃</h2>
+                <p class="mt-2 text-slate-600 leading-relaxed">
+                    以下行程依照「順路、寬鬆」原則設計。您可以點擊上方頁籤切換天數。每個景點皆附有地圖連結，方便您直接導航。考慮到天氣炎熱，中午時段多安排室內或休息，早晚則安排戶外活動。
+                </p>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="flex space-x-2 mb-6 overflow-x-auto pb-2">
+                <button onclick="switchDay('day1')" id="btn-day1" class="day-btn active-tab flex-1 py-3 px-4 rounded-lg border font-medium whitespace-nowrap shadow-sm transition-colors text-center">
+                    Day 1<br><span class="text-xs font-normal">抵達與適應</span>
+                </button>
+                <button onclick="switchDay('day2')" id="btn-day2" class="day-btn inactive-tab flex-1 py-3 px-4 rounded-lg border font-medium whitespace-nowrap shadow-sm transition-colors text-center">
+                    Day 2<br><span class="text-xs font-normal">海洋與奇岩</span>
+                </button>
+                <button onclick="switchDay('day3')" id="btn-day3" class="day-btn inactive-tab flex-1 py-3 px-4 rounded-lg border font-medium whitespace-nowrap shadow-sm transition-colors text-center">
+                    Day 3<br><span class="text-xs font-normal">秘境與星空</span>
+                </button>
+                <button onclick="switchDay('day4')" id="btn-day4" class="day-btn inactive-tab flex-1 py-3 px-4 rounded-lg border font-medium whitespace-nowrap shadow-sm transition-colors text-center">
+                    Day 4<br><span class="text-xs font-normal">回程</span>
+                </button>
+            </div>
+
+            <!-- Timeline Container -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 relative min-h-[500px]">
+                <!-- Dynamic Content injected here -->
+                <div id="timeline-content" class="space-y-8 relative">
+                    <!-- Line is handled by CSS on list items or absolute div -->
+                    <div class="timeline-line hidden md:block"></div>
+                    <!-- Content populated by JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Gastronomy Map -->
+        <section id="gastronomy" class="scroll-mt-20">
+            <div class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800 border-l-4 border-teal-500 pl-3">綠島必吃美食地圖</h2>
+                    <p class="mt-2 text-slate-600">
+                        精選近兩年網路高評價美食。請使用右側按鈕篩選類別。
+                    </p>
+                </div>
+                <!-- Filters -->
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="filterFood('all')" class="food-filter bg-teal-600 text-white px-4 py-2 rounded-full text-sm hover:bg-teal-700 transition shadow-sm ring-2 ring-teal-600 ring-offset-2">全部</button>
+                    <button onclick="filterFood('seafood')" class="food-filter bg-white text-slate-600 border border-slate-200 px-4 py-2 rounded-full text-sm hover:bg-slate-50 transition">海鮮/正餐</button>
+                    <button onclick="filterFood('snack')" class="food-filter bg-white text-slate-600 border border-slate-200 px-4 py-2 rounded-full text-sm hover:bg-slate-50 transition">小吃/冰品</button>
+                    <button onclick="filterFood('breakfast')" class="food-filter bg-white text-slate-600 border border-slate-200 px-4 py-2 rounded-full text-sm hover:bg-slate-50 transition">早午餐</button>
+                </div>
+            </div>
+
+            <div id="food-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Food cards injected by JS -->
+            </div>
+        </section>
+
+        <!-- Section 5: Preparation Checklist -->
+        <section id="prep" class="scroll-mt-20 mb-20">
+            <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-8 border border-amber-100">
+                <h2 class="text-2xl font-bold text-amber-800 mb-6 flex items-center">
+                    <span class="mr-2">🧳</span> 行李準備清單
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div>
+                        <h3 class="font-bold text-amber-700 mb-3 border-b border-amber-200 pb-1">必備證件與金錢</h3>
+                        <ul class="space-y-2 text-sm text-slate-700" id="list-docs">
+                            <!-- Injected JS -->
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-amber-700 mb-3 border-b border-amber-200 pb-1">衣物與穿戴</h3>
+                        <ul class="space-y-2 text-sm text-slate-700" id="list-wear">
+                            <!-- Injected JS -->
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-amber-700 mb-3 border-b border-amber-200 pb-1">藥品與其他</h3>
+                        <ul class="space-y-2 text-sm text-slate-700" id="list-misc">
+                            <!-- Injected JS -->
+                        </ul>
+                    </div>
+                </div>
+                <p class="mt-6 text-xs text-amber-600/80 text-center">💡 點擊項目可標記為已準備</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-800 text-slate-300 py-8 text-center text-sm">
+        <p>© 2026 Green Island Trip Planner. Designed for Your Family Trip.</p>
+        <p class="mt-2 text-slate-500">天氣與交通狀況請以當日官方公告為準。</p>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- DATA STORE ---
+        
+        // Itinerary Data
+        const itineraryData = {
+            day1: [
+                { time: "08:30", icon: "🚄", title: "台中出發", desc: "搭乘高鐵前往左營 (建議班次 08:30-09:30)。", map: "https://goo.gl/maps/TaichungHSR" },
+                { time: "10:00", icon: "🚆", title: "轉乘台鐵", desc: "新左營站轉乘自強號前往台東火車站 (約 2.5 小時)。車上享用鐵路便當。", map: "https://goo.gl/maps/Xinzuoying" },
+                { time: "13:30", icon: "🚢", title: "富岡漁港搭船", desc: "計程車前往富岡漁港，搭乘綠島之星/凱旋客輪 (航程約 50 分鐘)。*記得吃暈船藥*", map: "https://goo.gl/maps/FugangHarbor" },
+                { time: "15:00", icon: "🛵", title: "抵達綠島 & 領車", desc: "港口領取機車，行李由民宿業者載運或自行載回民宿 Check-in。", map: "https://goo.gl/maps/NanliaoHarbor" },
+                { time: "16:30", icon: "🌅", title: "牛頭山看日落", desc: "騎車前往牛頭山大草原，簡單散步，欣賞夕陽海景。", map: "https://www.google.com/maps/search/綠島+牛頭山" },
+                { time: "18:30", icon: "🔥", title: "炭烤 BBQ 晚餐", desc: "綠島經典晚餐體驗。推薦：阿剛炭烤或阿亮炭烤 (CP值高)。", map: "https://www.google.com/maps/search/綠島+阿剛炭烤" }
+            ],
+            day2: [
+                { time: "09:00", icon: "🐠", title: "柴口/石朗 浮潛/玻璃船", desc: "親子行程重頭戲！怕水的小孩可選玻璃船。推薦找教練一對一帶領。", map: "https://www.google.com/maps/search/綠島+柴口浮潛區" },
+                { time: "12:00", icon: "🍜", title: "午餐：在地海草特色", desc: "品嚐海草乾拌麵或鹿肉丼飯。推薦：池塘有魚。", map: "https://www.google.com/maps/search/綠島+池塘有魚" },
+                { time: "14:00", icon: "🍧", title: "午後消暑", desc: "太陽最大時段，去吃「監獄冰」或回民宿午休。", map: "https://www.google.com/maps/search/綠島+監獄冰" },
+                { time: "16:00", icon: "🏞️", title: "環島探索 (北岸)", desc: "綠島燈塔 (有潟湖可玩水)、人權紀念公園、將軍岩。", map: "https://www.google.com/maps/search/綠島燈塔" },
+                { time: "19:00", icon: "🥘", title: "晚餐：東昇羊肉爐", desc: "在地老字號，湯頭鮮甜，適合全家大小。", map: "https://www.google.com/maps/search/綠島+東昇羊肉爐" }
+            ],
+            day3: [
+                { time: "05:30", icon: "🌄", title: "朝日溫泉 (選修)", desc: "世界級海底溫泉。可選擇看日出，或稍微晚點 8:00 去煮溫泉蛋。", map: "https://www.google.com/maps/search/朝日溫泉" },
+                { time: "10:00", icon: "🛒", title: "伴手禮採買", desc: "南寮大街採買飛魚卵XO醬、海草麻糬。逛免稅店。", map: "https://www.google.com/maps/search/綠島+南寮大街" },
+                { time: "14:00", icon: "💧", title: "大白沙踩水/彎弓洞", desc: "大白沙有美麗的步道；彎弓洞(藍眼睛)是絕美海蝕洞，需注意潮汐。", map: "https://www.google.com/maps/search/綠島+彎弓洞" },
+                { time: "16:30", icon: "📷", title: "小長城 & 哈巴狗", desc: "經典打卡點，步道好走，視野極佳。", map: "https://www.google.com/maps/search/綠島+小長城" },
+                { time: "20:00", icon: "🌌", title: "夜間生態導覽", desc: "尋找梅花鹿、津田氏大頭竹節蟲。通常由民宿安排。", map: "" }
+            ],
+            day4: [
+                { time: "09:00", icon: "👋", title: "最後巡禮", desc: "整理行李，歸還機車。到港口附近買個海草蛋餅。", map: "https://goo.gl/maps/NanliaoHarbor" },
+                { time: "10:30", icon: "🚢", title: "搭船返程", desc: "搭乘船班返回台東富岡漁港。", map: "" },
+                { time: "12:30", icon: "🍗", title: "台東午餐", desc: "推薦：藍蜻蜓炸雞或榕樹下米苔目，吃飽再上火車。", map: "https://www.google.com/maps/search/台東+藍蜻蜓" },
+                { time: "14:00", icon: "🚆", title: "火車轉高鐵", desc: "返回溫暖的家。", map: "" }
+            ]
+        };
+
+        // Food Data
+        const foodData = [
+            { name: "池塘有魚", type: "seafood", tag: "海鮮餐廳", rating: "4.5", desc: "老字號，鮪魚辣椒麵好吃。", map: "https://www.google.com/maps/search/綠島+池塘有魚" },
+            { name: "東昇羊肉爐", type: "seafood", tag: "特色鍋物", rating: "4.6", desc: "清燉湯頭，羊肉軟嫩，晚上必吃。", map: "https://www.google.com/maps/search/綠島+東昇羊肉爐" },
+            { name: "歸還 (Return)", type: "breakfast", tag: "早午餐/漢堡", rating: "4.8", desc: "裝潢美，漢堡多汁，年輕人最愛。", map: "https://www.google.com/maps/search/綠島+歸還" },
+            { name: "SeeSeaToast", type: "snack", tag: "熱壓吐司", rating: "4.7", desc: "海景第一排，造型吐司適合打卡。", map: "https://www.google.com/maps/search/綠島+SeeSeaToast" },
+            { name: "綠島派吃所", type: "snack", tag: "海草冰", rating: "4.4", desc: "監獄冰創始店，份量大。", map: "https://www.google.com/maps/search/綠島派吃所" },
+            { name: "梅花鹿專賣店", type: "snack", tag: "雞蛋糕", rating: "4.3", desc: "鹿造型雞蛋糕，小孩最愛。", map: "https://www.google.com/maps/search/綠島+梅花鹿專賣店" },
+            { name: "只有海", type: "seafood", tag: "日式丼飯", rating: "4.9", desc: "需要預約，生魚片非常新鮮。", map: "https://www.google.com/maps/search/綠島+只有海" },
+            { name: "富富廚房", type: "seafood", tag: "西式餐酒", rating: "4.6", desc: "咕咾肉、燉飯很有水準。", map: "https://www.google.com/maps/search/綠島+富富廚房" },
+        ];
+
+        // Checklist Data
+        const checklist = {
+            docs: ["身分證/健保卡", "駕照 (租機車必備)", "現金 (島上部分店無刷卡)", "提款卡", "船票/住宿確認單"],
+            wear: ["泳衣/泳褲 (至少2套)", "水母衣 (防曬防刮)", "墨鏡/遮陽帽", "涼鞋/拖鞋", "薄外套 (騎車/冷氣房)"],
+            misc: ["**暈船藥** (最重要的)", "高係數防曬乳 (海洋友善)", "蘆薈凝露 (曬後修護)", "手機防水袋", "個人常備藥", "行動電源"]
+        };
+
+        // --- FUNCTIONS ---
+
+        // 1. Render Timeline
+        function switchDay(dayId) {
+            // Update Buttons
+            document.querySelectorAll('.day-btn').forEach(btn => {
+                if (btn.id === `btn-${dayId}`) {
+                    btn.classList.remove('inactive-tab');
+                    btn.classList.add('active-tab', 'ring-2', 'ring-teal-300', 'ring-offset-2');
+                } else {
+                    btn.classList.add('inactive-tab');
+                    btn.classList.remove('active-tab', 'ring-2', 'ring-teal-300', 'ring-offset-2');
+                }
+            });
+
+            // Update Content
+            const container = document.getElementById('timeline-content');
+            const data = itineraryData[dayId];
+            let html = '<div class="timeline-line hidden md:block"></div>'; // Re-add line
+
+            data.forEach((item, index) => {
+                html += `
+                    <div class="relative flex flex-col md:flex-row gap-4 md:gap-8 items-start group">
+                        <!-- Time & Icon -->
+                        <div class="md:w-32 flex-shrink-0 flex items-center md:justify-end z-10">
+                            <div class="bg-teal-100 text-teal-700 font-bold py-1 px-3 rounded-full text-sm shadow-sm border border-teal-200">
+                                ${item.time}
+                            </div>
+                            <div class="hidden md:flex ml-4 w-8 h-8 bg-teal-500 text-white rounded-full items-center justify-center text-sm shadow ring-4 ring-white">
+                                ${item.icon}
+                            </div>
+                        </div>
+                        
+                        <!-- Content Card -->
+                        <div class="flex-grow bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition w-full">
+                            <div class="flex justify-between items-start">
+                                <h3 class="font-bold text-lg text-slate-800 flex items-center">
+                                    <span class="md:hidden mr-2 text-xl">${item.icon}</span>
+                                    ${item.title}
+                                </h3>
+                                ${item.map ? `<a href="${item.map}" target="_blank" class="text-teal-500 hover:text-teal-700 text-sm">📍 導航</a>` : ''}
+                            </div>
+                            <p class="text-slate-600 mt-2 text-sm leading-relaxed">${item.desc}</p>
+                            ${item.title.includes("停留時間") ? `<div class="mt-2 inline-block bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded">⏳ ${item.duration}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 2. Render Food
+        function filterFood(type) {
+            // Update Buttons
+            document.querySelectorAll('.food-filter').forEach(btn => {
+                // Reset styles
+                if (btn.textContent.includes('全部') && type === 'all' || 
+                    btn.textContent.includes('海鮮') && type === 'seafood' ||
+                    btn.textContent.includes('小吃') && type === 'snack' ||
+                    btn.textContent.includes('早午餐') && type === 'breakfast') {
+                    btn.className = "food-filter bg-teal-600 text-white px-4 py-2 rounded-full text-sm hover:bg-teal-700 transition shadow-sm ring-2 ring-teal-600 ring-offset-2";
+                } else {
+                    btn.className = "food-filter bg-white text-slate-600 border border-slate-200 px-4 py-2 rounded-full text-sm hover:bg-slate-50 transition";
+                }
+            });
+
+            const grid = document.getElementById('food-grid');
+            grid.innerHTML = '';
+
+            const filtered = type === 'all' ? foodData : foodData.filter(f => f.type === type);
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl shadow-sm border border-slate-100 p-5 hover:shadow-md transition flex flex-col justify-between h-full";
+                
+                let badgeColor = "bg-slate-100 text-slate-600";
+                if(item.type === 'seafood') badgeColor = "bg-blue-100 text-blue-700";
+                if(item.type === 'snack') badgeColor = "bg-orange-100 text-orange-700";
+                if(item.type === 'breakfast') badgeColor = "bg-yellow-100 text-yellow-700";
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="${badgeColor} text-xs px-2 py-1 rounded font-medium">${item.tag}</span>
+                            <span class="text-amber-500 font-bold text-sm">★ ${item.rating}</span>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-800 mb-2">${item.name}</h3>
+                        <p class="text-slate-500 text-sm mb-4">${item.desc}</p>
+                    </div>
+                    <a href="${item.map}" target="_blank" class="block w-full text-center py-2 border border-teal-500 text-teal-600 rounded-lg hover:bg-teal-50 text-sm font-medium transition">
+                        Google Maps
+                    </a>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // 3. Render Checklist
+        function renderChecklist() {
+            const types = ['docs', 'wear', 'misc'];
+            types.forEach(type => {
+                const ul = document.getElementById(`list-${type}`);
+                checklist[type].forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = "checklist-item flex items-center cursor-pointer group";
+                    li.onclick = function() { this.classList.toggle('checked'); };
+                    li.innerHTML = `
+                        <div class="w-5 h-5 rounded border border-slate-300 mr-3 flex items-center justify-center group-hover:border-amber-400 bg-white transition-colors">
+                            <span class="text-transparent check-mark text-xs font-bold">✓</span>
+                        </div>
+                        <span class="transition-colors group-hover:text-amber-700">${item}</span>
+                    `;
+                    // CSS for check logic
+                    const style = document.createElement('style');
+                    style.innerHTML = `.checklist-item.checked .check-mark { color: #d97706; } .checklist-item.checked div { border-color: #d97706; }`;
+                    document.head.appendChild(style);
+                    ul.appendChild(li);
+                });
+            });
+        }
+
+        // 4. Initialize Charts (Chart.js)
+        function initCharts() {
+            // Budget Chart
+            const ctxBudget = document.getElementById('budgetChart').getContext('2d');
+            new Chart(ctxBudget, {
+                type: 'doughnut',
+                data: {
+                    labels: ['交通 (高鐵/船/租車)', '住宿 (3晚)', '餐飲', '活動 (浮潛/溫泉)', '其他'],
+                    datasets: [{
+                        data: [35, 30, 20, 10, 5],
+                        backgroundColor: ['#14b8a6', '#0ea5e9', '#f59e0b', '#8b5cf6', '#cbd5e1'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+                    }
+                }
+            });
+
+            // Transport Chart
+            const ctxTrans = document.getElementById('transportChart').getContext('2d');
+            new Chart(ctxTrans, {
+                type: 'bar',
+                data: {
+                    labels: ['方案A: 高鐵+火車', '方案B: 自行開車'],
+                    datasets: [
+                        {
+                            label: '單程交通時間 (小時)',
+                            data: [4.5, 6.5],
+                            backgroundColor: '#14b8a6',
+                            borderRadius: 4
+                        },
+                        {
+                            label: '疲勞指數 (1-10)',
+                            data: [3, 9],
+                            backgroundColor: '#ef4444',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { boxWidth: 12 } }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            switchDay('day1');
+            filterFood('all');
+            renderChecklist();
+            initCharts();
+
+            // Mobile Menu Toggle
+            const btn = document.getElementById('mobile-menu-btn');
+            const menu = document.getElementById('mobile-menu');
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+        });
+
+    </script>
+</body>
+</html>
